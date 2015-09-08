@@ -484,6 +484,35 @@ namespace FsDb
                 }
             }
         }
+
+        [Test]
+        [TestMethod]
+        public void BatchSaveTest()
+        {
+            Dictionary<int, byte[]> data = new Dictionary<int, byte[]>();
+            Dictionary<int, IPtr> ptrs = new Dictionary<int, IPtr>();
+            using (storage = CreateNewStorage(true))
+            {
+                data[1] = CreateData(1, 100);
+                data[2] = CreateData(2, 200);
+                data[3] = CreateData(3, 300);
+                ptrs[1] = storage.Save(data[1]);
+                ptrs[2] = storage.Save(data[2]);
+                var p = storage.BatchSave(new Tuple<IPtr, byte[]>[]
+                {
+                    new Tuple<IPtr, byte[]>(ptrs[1], data[1]),
+                    new Tuple<IPtr, byte[]>(ptrs[2], data[2]),
+                    new Tuple<IPtr, byte[]>(null, data[3]),
+                });
+                for (int i = 0; i < p.Length; ++i)
+                    ptrs[i + 1] = p[i];
+                foreach (var key in data.Keys)
+                    Microsoft.VisualStudio.TestTools.UnitTesting.Assert.IsTrue(
+                        data[key].SequenceEqual(storage.Load(ptrs[key])));
+
+
+            }
+        }
     }
 
     [TestClass]

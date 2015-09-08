@@ -15,9 +15,9 @@ namespace FsDb
     }
 
     /// <summary>
-    /// Storage for binary data in file system.
+    /// Storage for binary dataitems in file system.
     /// Support: multithreading, checksum (MD5CryptoServiceProvider),
-    /// data with not restricted length, updating data by pointer (in case where there are enough place)
+    /// dataitems with not restricted length, updating dataitems by pointer (in case where there are enough place)
     /// </summary>
     public class FsStorage : IDisposable
     {
@@ -146,9 +146,9 @@ namespace FsDb
         }
 
         private byte[] stub = new byte[1024*1024];
-        /// <summary> If position == -1 write to end of file, else data will be writed to position </summary>
-        /// <returns> Position in file where data were saved. It equals to parameter position, if it was valid,
-        ///  else if parameter position was equals -1 or other not valid position, method returns new position of data. </returns>
+        /// <summary> If position == -1 write to end of file, else dataitems will be writed to position </summary>
+        /// <returns> Position in file where dataitems were saved. It equals to parameter position, if it was valid,
+        ///  else if parameter position was equals -1 or other not valid position, method returns new position of dataitems. </returns>
         private long WriteToDbFile(DbFileResource dbFile, int capacity, byte[] data, long position)
         {
             var len = BitConverter.GetBytes(data.Length);
@@ -180,8 +180,8 @@ namespace FsDb
         }
 
         /// <summary>
-        /// Load data by pointer _ptr. 
-        /// Return null if data is corrupted and it's checksum is not valid.
+        /// Load dataitems by pointer _ptr. 
+        /// Return null if dataitems is corrupted and it's checksum is not valid.
         /// </summary>
         public byte[] Load(IPtr _ptr)
         {
@@ -198,7 +198,7 @@ namespace FsDb
         }
 
         /// <summary>
-        /// Batch-loading data from storage. Storage determs the most optimal order for loading pointers, so items will be returned in other order than pointers.
+        /// Batch-loading dataitems from storage. Storage determs the most optimal order for loading pointers, so items will be returned in other order than pointers.
         /// </summary>
         public IEnumerable<Tuple<IPtr, byte[]>> BatchLoad(IPtr[] ptrs, int sizeOfbatchInMb = 1024)
         {
@@ -241,41 +241,48 @@ namespace FsDb
         }
 
         /// <summary>
-        /// Save data to end of storage, or update data by pointer. 
-        /// If there are not enough place to update data, it will be saved to end of storage.
+        /// Save dataitems to end of storage, or update dataitems by pointer. 
+        /// If there are not enough place to update dataitems, it will be saved to end of storage.
         /// </summary>
-        /// <returns>New pointer to data (it may be equals previous pointer if data were rewrited on the same place)</returns>
+        /// <returns>New pointer to dataitems (it may be equals previous pointer if dataitems were rewrited on the same place)</returns>
         public IPtr Save(byte[] data, IPtr _idx = null)
         {
-            //data = Compress.CompressGZip(data);
+            //dataitems = Compress.CompressGZip(dataitems);
             var idx = _idx as Ptr;
             if (idx != null && data.Length <= idx.Capacity) return Update(data, idx);
             return Store(data);
         }
 
         /// <summary>
-        /// Save new data or override existing data (if ptr is not null). 
+        /// Save new dataitems or override existing dataitems (if ptr is not null). 
         /// Storage not garantee that items will be saved in the same order as they were passed, because storage determs the most optimal order of saving.
         /// </summary>
-        /// <returns>New pointers to saved (overwrited) data in the same order as input data items</returns>
-        public IPtr[] BatchSave(Tuple<IPtr, byte[]>[] data)
+        /// <returns>New pointers to saved (overwrited) dataitems in the same order as input dataitems items</returns>
+        public IPtr[] BatchSave(Tuple<IPtr, byte[]>[] dataitems)
         {
             var md5 = new MD5CryptoServiceProvider();
-            var hash = data.Select(item => md5.ComputeHash(item.Item2)).ToArray();
-            var len = data.Select(item => BitConverter.GetBytes(item.Item2.Length)).ToArray();
-            var ptrs = new IPtr[data.Length];
+            var hash = dataitems.Select(item => md5.ComputeHash(item.Item2)).ToArray();
+            var len = dataitems.Select(item => BitConverter.GetBytes(item.Item2.Length)).ToArray();
+            var ptrs = new IPtr[dataitems.Length];
 
-            var groupsByFile = data.Select((item, i) => i).GroupBy(i => data[i].Item1 == null || ((Ptr)data[i].Item1).Capacity < data[i].Item2.Length ? -1 : ((Ptr)data[i].Item1).FileNum).ToArray();
+            Func<int, int> getFileNum = i =>
+            {
+                var data = dataitems[i].Item2;
+                var ptr = (Ptr) dataitems[i].Item1;
+                return ptr == null || ptr.Capacity < data.Length ? -1 : ptr.FileNum;
+            };
+            var groupsByFile = dataitems.Select((item, i) => i).GroupBy(i => getFileNum(i)).ToArray();
             foreach (var group in groupsByFile)
                 if (group.Key != -1)
                 {
-                    var items = group.OrderBy(i => ((Ptr) data[i].Item1).Position).ToArray();
+                    var items = group.OrderBy(i => ((Ptr) dataitems[i].Item1).Position).ToArray();
                     var dbFile = dbFiles[group.Key];
                     lock (dbFile)
                         foreach (var i in items)
                         {
-                            var ptr = (Ptr) data[i].Item1;
-                            var position = WriteToDbFile(dbFile,  data[i].Item2, len[i], hash[i], ptr.Capacity - data[i].Item2.Length, ptr.Position);
+                            var data = dataitems[i].Item2;
+                            var ptr = (Ptr) dataitems[i].Item1;
+                            var position = WriteToDbFile(dbFile,  data, len[i], hash[i], ptr.Capacity - data.Length, ptr.Position);
                             if (ptr.Position != position)
                                 ptr = new Ptr(ptr.Capacity, ptr.FileNum, position);
                             ptrs[i] = ptr;
@@ -294,14 +301,15 @@ namespace FsDb
                         lock(dbFile)
                             while (processed < items.Length && dbFile.length < maxDbFileLength)
                             {
-                                int i = processed;
+                                int i = items[processed];
+                                var data = dataitems[i].Item2;
                                 int k = (int)Math.Ceiling(Math.Log(data.Length / minRecordLen + 1, 2));
                                 int capacity = minRecordLen * (1 << k);
-                                var position = WriteToDbFile(dbFile, data[i].Item2, len[i], hash[i], capacity - data[i].Item2.Length, -1);
+                                var position = WriteToDbFile(dbFile, data, len[i], hash[i], capacity - data.Length, -1);
                                 ptrs[i] = new Ptr(capacity, filenum, position);
                                 ++processed;
                             }
-                        if (dbFile.length > maxDbFileLength)
+                        if (dbFile.length >= maxDbFileLength)
                             OpenNewDBFileIfOverfull();
                     }
                 }
@@ -320,7 +328,7 @@ namespace FsDb
         }
 
         /// <summary>
-        /// Uppend data to end of storage
+        /// Uppend dataitems to end of storage
         /// </summary>
         private Ptr Store(byte[] data)
         {
@@ -346,7 +354,7 @@ namespace FsDb
         }
 
         /// <summary>
-        /// Rewrite already exists record (write new data on the same place)
+        /// Rewrite already exists record (write new dataitems on the same place)
         /// </summary>
         private Ptr Update(byte[] data, Ptr idx)
         {

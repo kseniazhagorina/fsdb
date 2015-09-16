@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace FsDb
 {
-    internal class Crc32
+    public class Crc32
     {
         public const int ChecksumLen = 4;
         private uint[] table;

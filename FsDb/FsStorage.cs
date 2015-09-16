@@ -374,7 +374,7 @@ namespace FsDb
             lock (dbFiles)
             {
                 var lastDbFile = dbFiles[dbFiles.Count - 1];
-                if (lastDbFile.length > maxDbFileLength)
+                if (lastDbFile.length >= maxDbFileLength)
                 {
                     var nextfile = OpenDbFile(dbFiles.Count, createIfNotExist: true);
                     if (nextfile == null) throw new IOException("Can't open next file (" + dbFiles.Count + ") in storage.");

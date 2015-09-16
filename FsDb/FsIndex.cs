@@ -95,6 +95,8 @@ namespace FsDb
 
         public void Set(TKey key, IPtr ptr)
         {
+            if (key == null) throw new ArgumentNullException("key");
+            if (ptr == null) throw new ArgumentNullException("ptr");
             var keydata = serializeKey(key);
             var ptrdata = ptr.Serialize();
             var lenkey = BitConverter.GetBytes((short)keydata.Length);
